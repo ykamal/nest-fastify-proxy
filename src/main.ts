@@ -14,8 +14,8 @@ const defaultHost = `http://192.168.0.186:3000`;
 const loginHost = `http://192.168.0.186:4000`;
 
 const proxies = {
-  '/apps/app-1': `http://192.168.0.186:3001`,
-  '/apps/app-2': `http://192.168.0.186:3002`,
+  'app-1': `http://192.168.0.186:3001`,
+  'app-2': `http://192.168.0.186:3002`,
 };
 
 const isFile = (url) => {
@@ -49,7 +49,7 @@ fastifyServer.register(require('@fastify/http-proxy'), {
           return loginHost;
 
         case 'apps':
-          return proxies[pathnames[0]] ?? defaultHost;
+          return proxies[pathnames[1]] ?? defaultHost;
 
         default:
           return defaultHost;
