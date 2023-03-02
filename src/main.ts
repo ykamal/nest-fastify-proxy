@@ -43,7 +43,6 @@ fastifyServer.register(require('@fastify/http-proxy'), {
       // eslint-disable-next-line @typescript-eslint/no-var-requires
       const url = require('url').parse(original.url);
       const pathnames = url.pathname.split('/').filter((part) => part);
-      if (!pathnames.length) return defaultHost;
 
       switch (pathnames[0]) {
         case 'login':
@@ -51,6 +50,9 @@ fastifyServer.register(require('@fastify/http-proxy'), {
 
         case 'apps':
           return proxies[pathnames[0]] ?? defaultHost;
+
+        default:
+          return defaultHost;
       }
     },
   },
