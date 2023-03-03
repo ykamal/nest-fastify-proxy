@@ -55,9 +55,9 @@ async function bootstrap() {
         !isFile(req.url) &&
         !req.cookies['pps-auth']
       ) {
-        // return res.redirect(
-        //   `/login?redirect_to=${encodeURIComponent(req.url)}`,
-        // );
+        return res.redirect(
+          `/login?redirect_to=${encodeURIComponent(req.url)}`,
+        );
       }
       next();
     },
@@ -76,6 +76,9 @@ async function bootstrap() {
 
           case 'apps':
             return proxies[pathnames[1]];
+
+          default:
+            return defaultHost;
         }
       },
     },
