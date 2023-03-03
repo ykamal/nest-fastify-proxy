@@ -5,63 +5,84 @@ import {
   NestFastifyApplication,
 } from '@nestjs/platform-fastify';
 import { FastifyReply, FastifyRequest } from 'fastify';
+import { createClient } from 'redis';
 import { AppModule } from './app.module';
 
-// PROXIES
-const fastifyServer = new FastifyAdapter();
-
-const defaultHost = `http://192.168.0.186:3000`;
-const loginHost = `http://192.168.0.186:4000`;
-
-const proxies = {
-  'app-1': `http://192.168.0.186:3001`,
-  'app-2': `http://192.168.0.186:3002`,
-};
-
-const isFile = (url) => {
-  return url.split('/').pop().indexOf('.') > -1;
-};
-
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-fastifyServer.register(require('@fastify/http-proxy'), {
-  upstream: ``,
-  // this is where we handle requests like a guard. We cannot use guards because these are not routes
-  // of nest itself
-  preHandler: (req: FastifyRequest, res: FastifyReply, next: any) => {
-    if (
-      !req.url.startsWith(`/login`) &&
-      !isFile(req.url) &&
-      !req.cookies['pps-auth']
-    ) {
-      return res.redirect(`/login?redirect_to=${encodeURIComponent(req.url)}`);
-    }
-    next();
-  },
-  replyOptions: {
-    // this will define which proxy something gets sent to
-    getUpstream: (original) => {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const url = require('url').parse(original.url);
-      const pathnames = url.pathname.split('/').filter((part) => part);
-
-      switch (pathnames[0]) {
-        case 'login':
-          return loginHost;
-
-        case 'apps':
-          return proxies[pathnames[1]] ?? defaultHost;
-
-        default:
-          return defaultHost;
-      }
-    },
-  },
-  rewritePrefix: `/`,
-  disableCache: true,
-  cacheUrls: 0,
-});
-
 async function bootstrap() {
+  // REDIS
+  // This assumes that we are using localhost:6379
+  const redisClient = createClient();
+  redisClient.on('error', (err) => console.log(`REDIS CLIENT ERROR`, err));
+
+  await redisClient.connect();
+
+  // PROXIES
+  const fastifyServer = new FastifyAdapter();
+
+  const defaultHost = `http://192.168.0.186:3000`;
+  const loginHost = `http://192.168.0.186:4000`;
+
+  // const proxies = {
+  //   'app-1': `http://192.168.0.186:3001`,
+  //   'app-2': `http://192.168.0.186:3002`,
+  // };
+
+  let proxies;
+
+  setInterval(async () => {
+    const redisApps = {};
+    for await (const key of redisClient.scanIterator()) {
+      const backend = await redisClient.get(key);
+      redisApps[key] = backend;
+    }
+    proxies = redisApps;
+  }, 1000);
+
+  const isFile = (url) => {
+    return url.split('/').pop().indexOf('.') > -1;
+  };
+
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  await fastifyServer.register(require('@fastify/http-proxy'), {
+    upstream: ``,
+    // this is where we handle requests like a guard. We cannot use guards because these are not routes
+    // of nest itself
+    preHandler: (req: FastifyRequest, res: FastifyReply, next: any) => {
+      if (
+        !req.url.startsWith(`/login`) &&
+        !isFile(req.url) &&
+        !req.cookies['pps-auth']
+      ) {
+        // return res.redirect(
+        //   `/login?redirect_to=${encodeURIComponent(req.url)}`,
+        // );
+      }
+      next();
+    },
+    replyOptions: {
+      // this will define which proxy something gets sent to
+      getUpstream: (request: FastifyRequest) => {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const url = require('url').parse(request.url);
+        const pathnames = url.pathname.split('/').filter((part) => part);
+
+        switch (pathnames[0]) {
+          case 'login':
+            return loginHost;
+
+          case 'apps':
+            return proxies[pathnames[1]] ?? defaultHost;
+
+          default:
+            return defaultHost;
+        }
+      },
+    },
+    rewritePrefix: `/`,
+    disableCache: true,
+    cacheUrls: 0,
+  });
+
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,
     fastifyServer,
