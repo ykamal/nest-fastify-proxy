@@ -19,16 +19,18 @@ async function bootstrap() {
   // PROXIES
   const fastifyServer = new FastifyAdapter();
 
-  const defaultHost = `http://192.168.0.186:3000`;
-  const loginHost = `http://192.168.0.186:4000`;
+  const myHost = `192.168.0.186`;
+  const defaultHost = `http://${myHost}:3000`;
+  const loginHost = `http://${myHost}:4000`;
 
-  // const proxies = {
-  //   'app-1': `http://192.168.0.186:3001`,
-  //   'app-2': `http://192.168.0.186:3002`,
-  // };
+  let proxies; // the list of apps and their backends
 
-  let proxies;
-
+  /**
+   * This updates the proxies list from Redis every 1 second.
+   *
+   * We are doing this because some of the configurations below
+   * do not support async functions/calls/methods inside.
+   */
   setInterval(async () => {
     const redisApps = {};
     for await (const key of redisClient.scanIterator()) {
@@ -44,7 +46,7 @@ async function bootstrap() {
 
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   await fastifyServer.register(require('@fastify/http-proxy'), {
-    upstream: ``,
+    upstream: ``, // leave this blank to make it dynamic below
     // this is where we handle requests like a guard. We cannot use guards because these are not routes
     // of nest itself
     preHandler: (req: FastifyRequest, res: FastifyReply, next: any) => {
@@ -66,15 +68,14 @@ async function bootstrap() {
         const url = require('url').parse(request.url);
         const pathnames = url.pathname.split('/').filter((part) => part);
 
+        if (!pathnames.length) return defaultHost;
+
         switch (pathnames[0]) {
           case 'login':
             return loginHost;
 
           case 'apps':
-            return proxies[pathnames[1]] ?? defaultHost;
-
-          default:
-            return defaultHost;
+            return proxies[pathnames[1]];
         }
       },
     },
